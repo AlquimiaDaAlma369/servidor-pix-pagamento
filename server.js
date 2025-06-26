@@ -1,41 +1,48 @@
-// 1. Importando as "peças" necessárias
+// 1. Importando as "peças" da nova versão do Mercado Pago
 const express = require('express');
-const mercadopago = require('mercadopago');
+const { MercadoPagoConfig, Payment } = require('mercadopago');
 const cors = require('cors');
 
 // 2. Configuração inicial do servidor
 const app = express();
-app.use(express.json()); // Permite que o servidor entenda o formato JSON
-app.use(cors()); // Permite que seu site no Google Sites acesse este servidor
+app.use(express.json());
+app.use(cors());
 
-// 3. Configurando o Mercado Pago com sua "senha secreta"
-// !!! IMPORTANTE: DEPOIS VAMOS SUBSTITUIR PELA SUA CREDENCIAL REAL !!!
-mercadopago.configure({
-    access_token: 'SEU_ACCESS_TOKEN_DO_MERCADO_PAGO',
-});
+// 3. Lendo a "chave secreta" do nosso cofre no Render (Variáveis de Ambiente)
+const accessToken = process.env.MERCADO_PAGO_TOKEN;
 
-// 4. Objeto para guardar o status dos pagamentos
+// Se a chave não estiver configurada, avisa no log e encerra.
+if (!accessToken) {
+    console.log("Erro: A variável de ambiente MERCADO_PAGO_TOKEN não está configurada.");
+    process.exit(1);
+}
+
+// 4. Configurando o cliente do Mercado Pago com a chave secreta (Sintaxe da v2)
+const client = new MercadoPagoConfig({ accessToken: accessToken });
+const payment = new Payment(client);
+
+// 5. Objeto para guardar o status dos pagamentos
 const pagamentos = {};
 
-// 5. Rota para criar a cobrança PIX
+// 6. Rota para criar a cobrança PIX
 app.post('/criar-pagamento', async (req, res) => {
     try {
-        const dadosPagamento = {
-            transaction_amount: 1.00, // <<-- SE QUISER, MUDE AQUI O VALOR DO SEU PRODUTO
-            description: 'Inscrição para o evento/curso', // <<-- DESCRIÇÃO QUE APARECERÁ NO PIX
+        const body = {
+            transaction_amount: 1.00, // <<-- VALOR DO PRODUTO
+            description: 'Inscrição para o evento/curso', // <<-- DESCRIÇÃO
             payment_method_id: 'pix',
             payer: {
-                email: 'cliente@email.com',
+                email: 'cliente@exemplo.com',
             },
-            // !!! IMPORTANTE: DEPOIS VAMOS SUBSTITUIR PELA SUA URL DO RENDER !!!
-            notification_url: 'https://servidor-pix-pagamento.onrender.com/webhook',
+            notification_url: notification_url: 'https://servidor-pix-pagamento.onrender.com/webhook', // <<-- IMPORTANTE: SUBSTITUIR DEPOIS
         };
 
-        const resultado = await mercadopago.payment.create(dadosPagamento);
+        const resultado = await payment.create({ body });
+        
         const dadosFrontend = {
-            id: resultado.body.id,
-            qr_code: resultado.body.point_of_interaction.transaction_data.qr_code,
-            qr_code_base64: resultado.body.point_of_interaction.transaction_data.qr_code_base64,
+            id: resultado.id,
+            qr_code: resultado.point_of_interaction.transaction_data.qr_code,
+            qr_code_base64: resultado.point_of_interaction.transaction_data.qr_code_base64,
         };
 
         pagamentos[dadosFrontend.id] = { status: 'pending' };
@@ -43,12 +50,12 @@ app.post('/criar-pagamento', async (req, res) => {
         return res.json(dadosFrontend);
 
     } catch (error) {
-        console.error("Erro ao criar pagamento:", error);
+        console.error("Erro ao criar pagamento:", error.cause || error.message);
         return res.status(500).json({ error: 'Erro ao criar pagamento.' });
     }
 });
 
-// 6. Rota para a página verificar o status
+// 7. Rota para a página verificar o status
 app.get('/verificar-pagamento/:id', (req, res) => {
     const pagamentoId = req.params.id;
     const infoPagamento = pagamentos[pagamentoId];
@@ -56,22 +63,29 @@ app.get('/verificar-pagamento/:id', (req, res) => {
     if (!infoPagamento) {
         return res.status(404).json({ status: 'nao_encontrado' });
     }
-
     return res.json({ status: infoPagamento.status });
 });
 
-// 7. Rota de Webhook: O Mercado Pago nos avisa aqui quando o pagamento é aprovado
-app.post('/webhook', (req, res) => {
-    const notificacao = req.body;
-    if (notificacao.type === 'payment' && notificacao.data.id) {
-        console.log(`Webhook recebido para o pagamento: ${notificacao.data.id}`);
-        pagamentos[notificacao.data.id] = { status: 'approved' };
+// 8. Rota de Webhook
+app.post('/webhook', async (req, res) => {
+    try {
+        const query = req.query;
+        if (query.type === 'payment') {
+            const paymentInfo = await payment.get({ id: query['data.id'] });
+            console.log(`Webhook recebido. Status do pagamento ${paymentInfo.id}: ${paymentInfo.status}`);
+            if (paymentInfo.status === 'approved') {
+                pagamentos[paymentInfo.id] = { status: 'approved' };
+            }
+        }
+        res.sendStatus(204);
+    } catch (error) {
+        console.error("Erro no webhook:", error);
+        res.sendStatus(500);
     }
-    res.sendStatus(200);
 });
 
-// 8. Iniciando o servidor
-const PORT = 3000;
+// 9. Iniciando o servidor
+const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log(`Servidor rodando na porta ${PORT}`);
 });
