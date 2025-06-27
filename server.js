@@ -24,37 +24,36 @@ const payment = new Payment(client);
 // Módulo 5: "Memória" temporária para guardar o status dos pagamentos
 const pagamentos = {};
 
-// Módulo 6: Rota para o seu site pedir a criação de um pagamento PIX
+// Módulo 6 (v2): Rota para criar pagamentos (PIX ou Cartão)
 app.post('/criar-pagamento', async (req, res) => {
+    // O corpo do pedido agora vem do frontend (seja PIX ou Cartão)
+    const corpoDoPagamento = req.body;
+    
+    // Adiciona informações da notificação e do pagador
+    corpoDoPagamento.notification_url = 'https://servidor-pix-pagamento.onrender.com/webhook';
+    corpoDoPagamento.payer = {
+        email: req.body.payer.email || 'cliente@exemplo.com',
+    };
+
     try {
-        const body = {
-            transaction_amount: 22.00, // <<-- VALOR DO PRODUTO
-            description: 'Produto de Exemplo - Alquimia da Alma', // <<-- DESCRIÇÃO DO PRODUTO
-            payment_method_id: 'pix',
-            payer: {
-                email: 'cliente@exemplo.com', // E-mail do cliente (pode ser genérico)
-            },
-            notification_url: 'https://servidor-pix-pagamento.onrender.com/webhook',
-        };
-
-        const resultado = await payment.create({ body });
+        const resultado = await payment.create({ body: corpoDoPagamento });
         
-        const dadosFrontend = {
-            id: resultado.id,
-            qr_code: resultado.point_of_interaction.transaction_data.qr_code,
-            qr_code_base64: resultado.point_of_interaction.transaction_data.qr_code_base64,
-        };
+        console.log(`Pagamento criado com ID: ${resultado.id}, Status: ${resultado.status}`);
 
-        pagamentos[dadosFrontend.id] = { status: 'pending' };
-        console.log(`Pagamento PIX criado com ID: ${dadosFrontend.id}`);
-        return res.json(dadosFrontend);
+        // Responde ao frontend com os dados do pagamento
+        res.status(201).json({
+            id: resultado.id,
+            status: resultado.status,
+            detail: resultado.status_detail,
+        });
 
     } catch (error) {
         console.error("Erro ao criar pagamento:", error);
-        return res.status(500).json({ error: 'Erro ao criar pagamento.' });
+        // Se houver erro, devolve a mensagem de erro do Mercado Pago
+        const errorMessage = error.cause ? error.cause[0].description : error.message;
+        return res.status(500).json({ error: errorMessage });
     }
 });
-
 // Módulo 7: Rota para seu site verificar se o pagamento foi aprovado
 app.get('/verificar-pagamento/:id', (req, res) => {
     const pagamentoId = req.params.id;
