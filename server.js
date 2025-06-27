@@ -28,7 +28,7 @@ const pagamentos = {};
 app.post('/criar-pagamento', async (req, res) => {
     try {
         const body = {
-            transaction_amount: 1.00, // <<-- VALOR DO PRODUTO
+            transaction_amount: 22.00, // <<-- VALOR DO PRODUTO
             description: 'Produto de Exemplo - Alquimia da Alma', // <<-- DESCRIÇÃO DO PRODUTO
             payment_method_id: 'pix',
             payer: {
