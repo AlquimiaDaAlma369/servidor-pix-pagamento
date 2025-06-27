@@ -26,21 +26,19 @@ const pagamentos = {};
 
 // Módulo 6 (v2): Rota para criar pagamentos (PIX ou Cartão)
 app.post('/criar-pagamento', async (req, res) => {
-    // O corpo do pedido agora vem do frontend (seja PIX ou Cartão)
+    // O corpo do pedido agora vem do frontend, enviado pelo "Brick"
     const corpoDoPagamento = req.body;
     
-    // Adiciona informações da notificação e do pagador
+    // Adiciona a URL de notificação que é sempre a mesma
     corpoDoPagamento.notification_url = 'https://servidor-pix-pagamento.onrender.com/webhook';
-    corpoDoPagamento.payer = {
-        email: req.body.payer.email || 'cliente@exemplo.com',
-    };
 
     try {
+        // Usamos o 'payment' que já configuramos para criar a cobrança
         const resultado = await payment.create({ body: corpoDoPagamento });
         
-        console.log(`Pagamento criado com ID: ${resultado.id}, Status: ${resultado.status}`);
+        console.log(`Pagamento processado com ID: ${resultado.id}, Status: ${resultado.status}`);
 
-        // Responde ao frontend com os dados do pagamento
+        // Devolve a resposta do Mercado Pago diretamente para o frontend
         res.status(201).json({
             id: resultado.id,
             status: resultado.status,
@@ -49,7 +47,7 @@ app.post('/criar-pagamento', async (req, res) => {
 
     } catch (error) {
         console.error("Erro ao criar pagamento:", error);
-        // Se houver erro, devolve a mensagem de erro do Mercado Pago
+        // Se houver erro, devolve a mensagem de erro do Mercado Pago para o usuário ver
         const errorMessage = error.cause ? error.cause[0].description : error.message;
         return res.status(500).json({ error: errorMessage });
     }
