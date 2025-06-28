@@ -82,7 +82,34 @@ app.post('/webhook', async (req, res) => {
         res.sendStatus(500);
     }
 });
+// Rota antiga e confiável apenas para PIX
+app.post('/criar-pagamento-pix', async (req, res) => {
+    try {
+        const body = {
+            transaction_amount: 22.00,
+            description: 'Carta do Coração da Floresta',
+            payment_method_id: 'pix',
+            payer: {
+                email: 'cliente@exemplo.com',
+            },
+            notification_url: 'https://servidor-pix-pagamento.onrender.com/webhook',
+        };
 
+        const resultado = await payment.create({ body });
+        
+        const dadosFrontend = {
+            id: resultado.id,
+            qr_code: resultado.point_of_interaction.transaction_data.qr_code,
+            qr_code_base64: resultado.point_of_interaction.transaction_data.qr_code_base64,
+        };
+
+        pagamentos[dadosFrontend.id] = { status: 'pending' };
+        return res.json(dadosFrontend);
+
+    } catch (error) {
+        return res.status(500).json({ error: 'Erro ao criar pagamento.' });
+    }
+});
 // Módulo 9: Comando para ligar o servidor
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
